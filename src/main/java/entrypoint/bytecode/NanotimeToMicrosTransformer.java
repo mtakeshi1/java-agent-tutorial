@@ -4,7 +4,6 @@ import entrypoint.Agent;
 import org.objectweb.asm.*;
 
 import java.lang.instrument.ClassFileTransformer;
-import java.lang.instrument.IllegalClassFormatException;
 import java.security.ProtectionDomain;
 
 /**
@@ -24,33 +23,4 @@ public class NanotimeToMicrosTransformer implements ClassFileTransformer {
         } else return null;
     }
 
-    public static class NanosToMicrosClassVisitor extends ClassVisitor {
-        public NanosToMicrosClassVisitor(ClassWriter writer) {
-            super(Opcodes.ASM9, writer);
-        }
-
-        @Override
-        public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
-            MethodVisitor delegate = super.visitMethod(access, name, descriptor, signature, exceptions);
-            return new NanosToMicrosMethodVisitor(delegate);
-        }
-    }
-
-    public static class NanosToMicrosMethodVisitor extends MethodVisitor {
-        public NanosToMicrosMethodVisitor(MethodVisitor delegate) {
-            super(Opcodes.ASM9, delegate);
-        }
-
-        @Override
-        public void visitMethodInsn(int opcode, String owner, String name, String descriptor, boolean isInterface) {
-            super.visitMethodInsn(opcode, owner, name, descriptor, isInterface);
-            if (opcode == Opcodes.INVOKESTATIC && name.equals("nanoTime") && owner.equals("java/lang/System")) {
-                super.visitLdcInsn(1000L);
-                super.visitInsn(Opcodes.LDIV);
-                super.visitLdcInsn(1000L);
-                super.visitInsn(Opcodes.LMUL);
-            }
-
-        }
-    }
 }

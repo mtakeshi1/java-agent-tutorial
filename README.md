@@ -84,6 +84,54 @@ Doing this creates, IMO, a more robust java agent.
 
 ## ClassTransformers
 
+A class tranformer is an interface that has the following signature:
+
+```java
+public interface ClassFileTransformer {
+
+    /**
+     * Transforms the given class file and returns a new replacement class file.
+     * This method is invoked when the {@link Module Module} bearing {@link
+     * ClassFileTransformer#transform(Module, ClassLoader, String, Class, ProtectionDomain, byte[])
+     * transform} is not overridden.
+     *
+     * @implSpec The default implementation returns null.
+     *
+     * @param loader                the defining loader of the class to be transformed,
+     *                              may be {@code null} if the bootstrap loader
+     * @param className             the name of the class in the internal form of fully
+     *                              qualified class and interface names as defined in
+     *                              <i>The Java Virtual Machine Specification</i>.
+     *                              For example, <code>"java/util/List"</code>.
+     * @param classBeingRedefined   if this is triggered by a redefine or retransform,
+     *                              the class being redefined or retransformed;
+     *                              if this is a class load, {@code null}
+     * @param protectionDomain      the protection domain of the class being defined or redefined
+     * @param classfileBuffer       the input byte buffer in class file format - must not be modified
+     *
+     * @return a well-formed class file buffer (the result of the transform),
+     *         or {@code null} if no transform is performed
+     *
+     */
+    byte[] transform(ClassLoader loader,
+                     String className,
+                     Class<?> classBeingRedefined,
+                     ProtectionDomain protectionDomain,
+                     byte[] classfileBuffer)
+            throws IllegalClassFormatException;
+
+}
+
+
+```
+
+(it has a second method that adds Module information, but we're ignoring it for now.)
+
+If your transformer doesn't wish to to modify a class, it can either return the (unmodified) classfileBuffer or null.
+Keep in mind that the transformer may be called for more classes than what the agent has requested (by the
+retransformClasses), depending on the class hierarchy. That means that if you're filtering the classes you want to
+retransform by name, you have to double check in your transformer.
+
 ## ASM
 
 See [ASM.md](ASM.md) for more information
@@ -92,16 +140,41 @@ See [ASM.md](ASM.md) for more information
 
 ## Beware of classloaders
 
+When you attach a java agent to a running process, it's (the process) classpath has his system classloader modified and
+the agent jar is appended to it.
+While it allows for modified classes to refer to classes in the java agent (see the NanosToMicrosMethodVisitor calling
+NanosConverter, a class that was not present in the original classloader), it can create issues.
+The most common of those is a version mismatch between classes that were previously loaded and classes with the same
+fully classified class name present in the jar - and usually either the bytecode library that you're using (like ASM) or
+the logger facade that you're using (commons logging, slf4j, etc).
+The way this project is structured is to shade (rename) the classes from ASM to avoid (or at least minimize the chances
+of) collisions, so all the ASM classes in this jar have their package name renamed from org.objectweb.asm to
+org.objectweb.asmshadeda and you can do the same if you encounter any isses - they usually manifest as
+ClassCastException, IncompatibleClassChangeError, LinkageError, or similar.
+
 ## javaagent parameter
 
 ## attaching to a running process
 
+If you used this template, the easiest way is to run:
+```java -jar java-agent-tutorial.jar // adjust according the actual jar file name  ```
+
+It will list the java process that your user can attach to. The following command will attach the agent:
+
+```java -jar java-agent-tutorial.jar  <pid or name> // adjust according the actual jar file name  ```
+
 ### attaching to itself
+
+Usually the VM will prevent an agent to attach to itself, but you can 'fix' this by setting a System property:
+
+```-Djdk.attach.allowAttachSelf=true```
+
+I'm not entirely sure the use case, but if you ever need a program that can attach to itself, there it goes.
 
 # common issues
 
 Try to not modify classes in the sun.* and java.* packages as they can quickly cause issues. I had the following error
-in a very innocent aget:
+in a very innocent [agent](SampleAgent.md):
 
 ```
 Exception in thread "Attach Listener" java.lang.reflect.InvocationTargetException
